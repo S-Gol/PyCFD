@@ -1,4 +1,4 @@
-import numpy
+import numpy as np
 import numba
 
 class FluidSim:
@@ -15,27 +15,29 @@ class FluidSim:
         self.dy = 2/(ny - 1)
         self.t = 0.0
         self.nit = nit
+        self.indices = np.indices([nx, ny])
 
         #Simulation space dimensions
-        self.x = numpy.linspace(0, 2, nx)
-        self.y = numpy.linspace(0, 2, ny)
-        self.X, self.Y = numpy.meshgrid(self.x, self.y)
+        self.x = np.linspace(0, 2, nx)
+        self.y = np.linspace(0, 2, ny)
+        self.X, self.Y = np.meshgrid(self.x, self.y)
 
         #Fluid properties
         self.rho = rho
         self.nu = nu
-        self.dt = 0.001
+        self.dt = dt
 
         #Simulation field arrays 
-        self.u = numpy.zeros((ny, nx))
-        self.v = numpy.zeros((ny, nx))
-        self.p = numpy.zeros((ny, nx)) 
-        self.b = numpy.zeros((ny, nx))
+        self.u = np.zeros((ny, nx))
+        self.v = np.zeros((ny, nx))
+        self.p = np.zeros((ny, nx)) 
+        self.b = np.zeros((ny, nx))
 
     def build_up_b(self, b, rho, dt, u, v, dx, dy):
         """
         Used to calculate intermediate b-value for poisson pressure equation. 
         """
+        
         b[1:-1, 1:-1] = (rho * (1 / dt * 
                     ((u[1:-1, 2:] - u[1:-1, 0:-2]) / 
                      (2 * dx) + (v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy)) -
@@ -50,7 +52,7 @@ class FluidSim:
         Iterative method used to find the pressure at a point from the b-matrix intermediate
         values. 
         """
-        pn = numpy.empty_like(p)
+        pn = np.empty_like(p)
         pn = p.copy()
         
         for q in range(self.nit):
@@ -73,6 +75,23 @@ class FluidSim:
         self.t += self.dt
         self.u, self.v, self.p = self.cavity_flow()
 
+    def advectField(self, c,u,v):
+        material = c.copy()
+
+        offsetX = u  / self.dx
+        offsetY = v  / self.dy
+        offsets = self.indices.copy()
+        offsets[0,:,:] -= offsetY.astype(np.int32)
+        offsets[1,:,:] -= offsetX.astype(np.int32)
+        
+        offsets = np.clip(offsets, 0, self.ny-1)
+
+        for x in range(self.nx):
+            for y in range(self.ny):
+                material[x,y] = c[offsets[0,x,y], offsets[1,x,y]]
+
+        return material
+
     def cavity_flow(self):
         u = self.u
         v = self.v 
@@ -84,9 +103,9 @@ class FluidSim:
         nu = self.nu
         
         
-        un = numpy.empty_like(u)
-        vn = numpy.empty_like(v)
-        b = numpy.zeros((self.ny, self.nx))
+        un = np.empty_like(u)
+        vn = np.empty_like(v)
+        b = np.zeros((self.ny, self.nx))
         
         un = u.copy()
         vn = v.copy()
