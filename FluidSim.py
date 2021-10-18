@@ -1,5 +1,6 @@
+from numba.np.ufunc import parallel
 import numpy as np
-import numba
+from numba import njit
 
 class FluidSim:
     """
@@ -16,6 +17,8 @@ class FluidSim:
         self.t = 0.0
         self.nit = nit
         self.indices = np.indices([nx, ny])
+        self.xIndices = self.indices[0,:,:].flatten()
+        self.yIndices = self.indices[1,:,:].flatten()
 
         #Simulation space dimensions
         self.x = np.linspace(0, 2, nx)
@@ -32,8 +35,8 @@ class FluidSim:
         self.v = np.zeros((ny, nx))
         self.p = np.zeros((ny, nx)) 
         self.b = np.zeros((ny, nx))
-
-    def build_up_b(self, b, rho, dt, u, v, dx, dy):
+    @njit(parallel=True)
+    def build_up_b(b, rho, dt, u, v, dx, dy):
         """
         Used to calculate intermediate b-value for poisson pressure equation. 
         """
@@ -46,8 +49,8 @@ class FluidSim:
                            (v[1:-1, 2:] - v[1:-1, 0:-2]) / (2 * dx))-
                           ((v[2:, 1:-1] - v[0:-2, 1:-1]) / (2 * dy))**2))
         return b
-
-    def pressure_poisson(self, p, dx, dy, b):
+    @njit(parallel=True)
+    def pressure_poisson(p, dx, dy, b, nit):
         """
         Iterative method used to find the pressure at a point from the b-matrix intermediate
         values. 
@@ -55,7 +58,7 @@ class FluidSim:
         pn = np.empty_like(p)
         pn = p.copy()
         
-        for q in range(self.nit):
+        for q in range(nit):
             pn = p.copy()
             p[1:-1, 1:-1] = (((pn[1:-1, 2:] + pn[1:-1, 0:-2]) * dy**2 + 
                             (pn[2:, 1:-1] + pn[0:-2, 1:-1]) * dx**2) /
@@ -73,26 +76,6 @@ class FluidSim:
     def timestep(self):
         """Iterate through time, updating the simulation"""
         self.t += self.dt
-        self.u, self.v, self.p = self.cavity_flow()
-
-    def advectField(self, c,u,v):
-        material = c.copy()
-
-        offsetX = u  / self.dx
-        offsetY = v  / self.dy
-        offsets = self.indices.copy()
-        offsets[0,:,:] -= offsetY.astype(np.int32)
-        offsets[1,:,:] -= offsetX.astype(np.int32)
-        
-        offsets = np.clip(offsets, 0, self.ny-1)
-
-        for x in range(self.nx):
-            for y in range(self.ny):
-                material[x,y] = c[offsets[0,x,y], offsets[1,x,y]]
-
-        return material
-
-    def cavity_flow(self):
         u = self.u
         v = self.v 
         dt = self.dt
@@ -102,38 +85,13 @@ class FluidSim:
         rho = self.rho
         nu = self.nu
         
-        
-        un = np.empty_like(u)
-        vn = np.empty_like(v)
         b = np.zeros((self.ny, self.nx))
         
-        un = u.copy()
-        vn = v.copy()
-        
-        b = self.build_up_b(b, rho, dt, u, v, dx, dy)
-        p = self.pressure_poisson(p, dx, dy, b)
-        
-        u[1:-1, 1:-1] = (un[1:-1, 1:-1]-
-                        un[1:-1, 1:-1] * dt / dx *
-                        (un[1:-1, 1:-1] - un[1:-1, 0:-2]) -
-                        vn[1:-1, 1:-1] * dt / dy *
-                        (un[1:-1, 1:-1] - un[0:-2, 1:-1]) -
-                        dt / (2 * rho * dx) * (p[1:-1, 2:] - p[1:-1, 0:-2]) +
-                        nu * (dt / dx**2 *
-                        (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, 0:-2]) +
-                        dt / dy**2 *
-                        (un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[0:-2, 1:-1])))
 
-        v[1:-1,1:-1] = (vn[1:-1, 1:-1] -
-                        un[1:-1, 1:-1] * dt / dx *
-                    (vn[1:-1, 1:-1] - vn[1:-1, 0:-2]) -
-                        vn[1:-1, 1:-1] * dt / dy *
-                    (vn[1:-1, 1:-1] - vn[0:-2, 1:-1]) -
-                        dt / (2 * rho * dy) * (p[2:, 1:-1] - p[0:-2, 1:-1]) +
-                        nu * (dt / dx**2 *
-                    (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, 0:-2]) +
-                        dt / dy**2 *
-                    (vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[0:-2, 1:-1])))
+        b = FluidSim.build_up_b(b, rho, dt, u, v, dx, dy)
+        p = FluidSim.pressure_poisson(p, dx, dy, b, self.nit)
+        
+        u, v = FluidSim.velocity_calcs(self.u, self.v, p, self.dt, self.dx, self.dy, self.nu, self.rho )
 
         #TODO add better boundary conditions here
         u[0, :]  = 0
@@ -146,4 +104,50 @@ class FluidSim:
         v[:, -1] = 0
         
         
-        return u, v, p
+        self.u = u
+        self.v = v
+        self.p = p
+
+    def advectField(self, c,u,v):
+        advected = c.copy()
+
+        offsetX = u  / self.dx
+        offsetY = v  / self.dy
+        offsets = self.indices.copy()
+
+        offsets[0,:,:] -= offsetX.astype(np.int32).transpose()
+        offsets[1,:,:] -= offsetY.astype(np.int32).transpose()
+        
+        offsets[0,:,:] = np.clip(offsets[0,:,:], 0, self.nx-1)
+        offsets[1,:,:] = np.clip(offsets[1,:,:], 0, self.ny-1)
+
+        advected[self.yIndices,self.xIndices] = c[offsets[1,self.xIndices,self.yIndices], offsets[0,self.xIndices,self.yIndices]]
+
+        return advected
+    @njit(parallel=True)
+    def velocity_calcs(u, v, p, dt, dx, dy, nu, rho):
+        un = u.copy()
+        vn = v.copy()
+        
+        u[1:-1, 1:-1] = (un[1:-1, 1:-1]-
+                un[1:-1, 1:-1] * dt / dx *
+                (un[1:-1, 1:-1] - un[1:-1, 0:-2]) -
+                vn[1:-1, 1:-1] * dt / dy *
+                (un[1:-1, 1:-1] - un[0:-2, 1:-1]) -
+                dt / (2 * rho * dx) * (p[1:-1, 2:] - p[1:-1, 0:-2]) +
+                nu * (dt / dx**2 *
+                (un[1:-1, 2:] - 2 * un[1:-1, 1:-1] + un[1:-1, 0:-2]) +
+                dt / dy**2 *
+                (un[2:, 1:-1] - 2 * un[1:-1, 1:-1] + un[0:-2, 1:-1])))
+
+        v[1:-1,1:-1] = (vn[1:-1, 1:-1] -
+                        un[1:-1, 1:-1] * dt / dx *
+                    (vn[1:-1, 1:-1] - vn[1:-1, 0:-2]) -
+                        vn[1:-1, 1:-1] * dt / dy *
+                    (vn[1:-1, 1:-1] - vn[0:-2, 1:-1]) -
+                        dt / (2 * rho * dy) * (p[2:, 1:-1] - p[0:-2, 1:-1]) +
+                        nu * (dt / dx**2 *
+                    (vn[1:-1, 2:] - 2 * vn[1:-1, 1:-1] + vn[1:-1, 0:-2]) +
+                        dt / dy**2 *
+                    (vn[2:, 1:-1] - 2 * vn[1:-1, 1:-1] + vn[0:-2, 1:-1])))
+        return u, v
