@@ -6,7 +6,7 @@ class FluidSim:
     """
     Class containing the simulation space for a fluid. Manages fluid properties + simulation. 
     """
-    def __init__(self, nx, ny, xSize, ySize, rho = 1, nu = 0.1, dt = 0.001, nit = 50, boundaryDP = None, boundary0Vel = None):
+    def __init__(self, nx, ny, xSize, ySize, rho = 1, nu = 0.1, dt = 0.001, nit = 50, boundaryDP = None, boundary0Vel = None, walls=None):
 
         #Boundary conditions
         if boundaryDP is None:
@@ -17,6 +17,10 @@ class FluidSim:
             self.velBoundary = np.ones([nx, ny])
         else: 
             self.velBoundary = (~boundary0Vel).astype(int)
+
+        if walls is not None:
+            self.velBoundary *= (~walls).astype(int)
+            self.dp *= (~walls).astype(int)
 
 
         #Simulation variables 
@@ -108,15 +112,21 @@ class FluidSim:
         self.v = v
         self.p = p
 
-    def advectField(self, c):
+    def advectField(self, c, u=None, v=None, scaledIndices = None):
         """
         Advect property c across the velocity field. 
         """
         advected = c.copy()
-
-        offsetX = self.u / self.dx /10
-        offsetY = self.v / self.dy /10
-        offsets = self.indices.copy()
+        if u is None:
+            u=self.u
+        if v is None:
+            v=self.v
+        if scaledIndices is None:
+            offsets = self.indices.copy()
+        else:
+            offsets = scaledIndices.copy()
+        offsetX = u / self.dx /10
+        offsetY = v / self.dy /10
 
         offsets[0,:,:] -= offsetX.astype(np.int32).transpose()
         offsets[1,:,:] -= offsetY.astype(np.int32).transpose()
