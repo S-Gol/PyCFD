@@ -20,7 +20,6 @@ class FluidsRenderer:
         self.imageSize = [sim.nx*upscaleMult, sim.ny * upscaleMult]
         self.downscaledIndices = (sim.indices * upscaleMult)[:,::arrowSpacing,::arrowSpacing]
         self.upscaledIndices = (np.indices(self.imageSize)/self.upscaleMult).astype(int)
-        print(self.upscaledIndices)
         self.rowsUpsc = self.downscaledIndices[1,:,:].flatten()
         self.colsUpsc = self.downscaledIndices[0,:,:].flatten()
 
@@ -46,19 +45,19 @@ class FluidsRenderer:
                 self.sim.v[y,x] = v
             for d in self.dyePoints:
                 x,y,r = d
-                self.dye[x*self.upscaleMult-5:x*self.upscaleMult+5, y*self.upscaleMult-5:y*self.upscaleMult+5]+=r
+                self.dye[x*self.upscaleMult-5:x*self.upscaleMult+5, y*self.upscaleMult-5:y*self.upscaleMult+5]+=r*10
             self.sim.timestep()
 
             uUpscaled = cv2.resize(u, self.imageSize)
             vUpscaled = cv2.resize(v, self.imageSize)
 
-            self.dye = sim.advectField(self.dye, u=uUpscaled, v=vUpscaled, scaledIndices=self.upscaledIndices)
-            #self.dye = ndimage.convolve(self.dye, self.smoothKernel)
+            self.dye = self.sim.advectField(self.dye, u=uUpscaled, v=vUpscaled, scaledIndices=self.upscaledIndices)
+            self.dye = ndimage.convolve(self.dye, self.smoothKernel)
 
             scaledImage = (self.dye).astype(np.uint8)
 
-            u = (sim.u[self.rows, self.cols].flatten()*self.arrowSpacing*5).astype(np.int32)
-            v = (sim.v[self.rows, self.cols].flatten()*self.arrowSpacing*5).astype(np.int32)
+            u = (self.sim.u[self.rows, self.cols].flatten()*self.arrowSpacing*5).astype(np.int32)
+            v = (self.sim.v[self.rows, self.cols].flatten()*self.arrowSpacing*5).astype(np.int32)
             endX = self.colsUpsc+u
             endY = self.rowsUpsc+v
 
@@ -74,8 +73,8 @@ class FluidsRenderer:
         cv2.destroyAllWindows()
 
 
-xSize = 50
-ySize = 50
+xSize = 100
+ySize = 100
 
 walls = np.zeros([xSize, ySize], dtype=bool)
 walls[0:2,:]=True
@@ -99,6 +98,7 @@ walls[xs, ys] = True
 sim = FluidSim.FluidSim(xSize,ySize,2,2, dt=0.00001, walls=walls, nu=0.1)
 
 dyePoints = [[20,20,5]]
+
 
 renderer = FluidsRenderer(sim, forcedVel=velocities, dyePoints=dyePoints)
 renderer.startContinousRender()
