@@ -124,15 +124,16 @@ class FluidSim:
         if scaledIndices is None:
             offsets = self.indices.copy()
         else:
-            offsets = scaledIndices.copy()
-        xIndices = offsets[0,:,0]
-        yIndices = offsets[1,0,:]
+            offsets = np.indices(u.shape)
 
-        offsetX = u*10 / self.dx 
-        offsetY = v*10 / self.dy 
+        xIndices = offsets[0,:,:]
+        yIndices = offsets[1,:,:]
 
-        offsets[0,:,:] -= offsetX.astype(np.int32).transpose()
-        offsets[1,:,:] -= offsetY.astype(np.int32).transpose()
+        offsetX = u*30
+        offsetY = v*30
+
+        offsets[0,:,:] -= offsetX.astype(np.int32)
+        offsets[1,:,:] -= offsetY.astype(np.int32)
         
         offsets[0,:,:] = np.clip(offsets[0,:,:], 0, advected.shape[0]-1)
         offsets[1,:,:] = np.clip(offsets[1,:,:], 0, advected.shape[1]-1)
