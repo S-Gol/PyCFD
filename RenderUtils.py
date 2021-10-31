@@ -3,15 +3,29 @@ import cv2
 from scipy import ndimage
 import FluidSim
 from lic import *
+from sympy.physics.vector import curl
+from sympy.physics.vector import ReferenceFrame
 
 
 class FluidsRenderer:
     def __init__(self, sim, upscaleMult = 5, arrowSpacing=5, 
-    forcedVel=[], windowName = "PyCFD",
-    kernelSize = 3):
+    forcedVel=[], windowName = "PyCFD", arrows=True, colorMode = "speed"
+    ):
+        """
+        Easy rendering utility for fluid sim.
+        colorMode: speed, LIC
+
+        """
+
+        if colorMode != "speed" and colorMode != "LIC":
+            print("Invalid color mode")
+            raise ValueError
+
         self.sim = sim
         self.upscaleMult = upscaleMult
         self.arrowSpacing = arrowSpacing
+        self.useArrows = arrows
+        self.colorMode = colorMode
 
         self.fourcc = cv2.VideoWriter_fourcc(*"DIVX")
         self.forcedVel = forcedVel
@@ -30,10 +44,11 @@ class FluidsRenderer:
 
         cv2.namedWindow(self.window_name,cv2.WINDOW_NORMAL)
         cv2.resizeWindow(self.window_name, self.imageSize[0],self.imageSize[1])
-        self.smoothKernel =  np.ones([kernelSize, kernelSize]) / (kernelSize*kernelSize)
         self.baseImage = np.zeros(self.imageSize)
-        self.LICNoise = np.random.rand(*(self.imageSize))*cv2.resize(self.sim.velBoundary, self.imageSize)
+        self.LICNoise = np.random.rand(*(self.imageSize)).transpose()*cv2.resize(self.sim.velBoundary, self.imageSize)
         self.LICBase = np.zeros([self.imageSize[0], self.imageSize[1],2])
+        self.R = ReferenceFrame('R')
+
     def startContinousRender(self):
         self.video = cv2.VideoWriter('Output.avi', self.fourcc,30, [self.imageSize[0], self.imageSize[1]], 0)
         nt=0
@@ -49,26 +64,31 @@ class FluidsRenderer:
             uUpscaled = cv2.resize(self.sim.u, self.imageSize)
             vUpscaled = cv2.resize(self.sim.v, self.imageSize)
 
+            if self.colorMode == "LIC":
+                velStack = self.LICBase.copy()
 
-            endX = self.colsUpsc+(self.sim.u[self.rows, self.cols].flatten()*self.arrowSpacing*5).astype(np.int32)
-            endY = self.rowsUpsc+(self.sim.v[self.rows, self.cols].flatten()*self.arrowSpacing*5).astype(np.int32)
+                velStack[:,:,0]=uUpscaled
+                velStack[:,:,1]=vUpscaled
 
-            scaledImage = self.baseImage.copy()
-            velStack = self.LICBase.copy()
+                lic_image = lic_flow(velStack, t=nt/10.0, len_pix=10, noise=self.LICNoise)*255
+                mainImage=cv2.cvtColor(lic_image.astype(np.uint8),cv2.COLOR_GRAY2BGR)
+            if self.colorMode == "speed":
 
-            velStack[:,:,0]=uUpscaled
-            velStack[:,:,1]=vUpscaled
 
-            lic_image = lic_flow(velStack, t=nt/10.0, len_pix=5, noise=self.LICNoise)*255
+                speedImage = cv2.resize(uUpscaled**2+vUpscaled**2, self.imageSize)*100
 
-            cimage=cv2.cvtColor(lic_image.astype(np.uint8),cv2.COLOR_GRAY2BGR)
-
-            for i in range(len(self.rows)):
-                cv2.arrowedLine(cimage, [self.colsUpsc[i], self.rowsUpsc[i]], [endX[i], endY[i]], [0,255,0])
+                mainImage=cv2.cvtColor(speedImage.astype(np.uint8),cv2.COLOR_GRAY2BGR)
 
             
-            self.video.write((lic_image.astype(np.uint8)))
-            cv2.imshow(self.window_name, cimage)
+            if self.useArrows:
+                endX = self.colsUpsc+(self.sim.u[self.rows, self.cols].flatten()*self.arrowSpacing*5).astype(np.int32)
+                endY = self.rowsUpsc+(self.sim.v[self.rows, self.cols].flatten()*self.arrowSpacing*5).astype(np.int32)
+                for i in range(len(self.rows)):
+                    cv2.arrowedLine(mainImage, [self.colsUpsc[i], self.rowsUpsc[i]], [endX[i], endY[i]], [0,255,0])
+
+            
+            self.video.write((mainImage.astype(np.uint8)))
+            cv2.imshow(self.window_name, mainImage)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
         self.video.release()
