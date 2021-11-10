@@ -30,11 +30,11 @@ class FluidsRenderer:
         self.fourcc = cv2.VideoWriter_fourcc(*"DIVX")
         self.forcedVel = forcedVel
 
-        self.imageSize = [sim.nx*upscaleMult, sim.ny * upscaleMult]
-        self.downscaledIndices = (sim.indices * upscaleMult)[:,::arrowSpacing,::arrowSpacing]
+        self.imageSize = (int(sim.nx*upscaleMult), int(sim.ny * upscaleMult))
+        self.downscaledIndices = (sim.indices * upscaleMult)[:,::arrowSpacing,::arrowSpacing].astype(int)
         self.upscaledIndices = (np.indices(self.imageSize)/self.upscaleMult).astype(int)
-        self.rowsUpsc = self.downscaledIndices[1,:,:].flatten()
-        self.colsUpsc = self.downscaledIndices[0,:,:].flatten()
+        self.rowsUpsc = self.downscaledIndices[1,:,:].flatten().astype(np.int32)
+        self.colsUpsc = self.downscaledIndices[0,:,:].flatten().astype(np.int32)
 
         self.rows = (self.rowsUpsc / upscaleMult).astype(np.int32)
         self.cols = (self.colsUpsc / upscaleMult).astype(np.int32)
@@ -50,7 +50,7 @@ class FluidsRenderer:
         self.R = ReferenceFrame('R')
 
     def startContinousRender(self):
-        self.video = cv2.VideoWriter('Output.avi', self.fourcc,30, [self.imageSize[0], self.imageSize[1]], 0)
+        #self.video = cv2.VideoWriter('Output.avi', self.fourcc,30, [self.imageSize[0], self.imageSize[1]], 0)
         nt=0
         while True:
             nt+=1
@@ -81,17 +81,17 @@ class FluidsRenderer:
 
             
             if self.useArrows:
-                endX = self.colsUpsc+(self.sim.u[self.rows, self.cols].flatten()*self.arrowSpacing*5).astype(np.int32)
-                endY = self.rowsUpsc+(self.sim.v[self.rows, self.cols].flatten()*self.arrowSpacing*5).astype(np.int32)
+                endX = (self.colsUpsc+(self.sim.u[self.rows, self.cols].flatten()*self.arrowSpacing*5)).astype(np.int32)
+                endY = (self.rowsUpsc+(self.sim.v[self.rows, self.cols].flatten()*self.arrowSpacing*5)).astype(np.int32)
                 for i in range(len(self.rows)):
-                    cv2.arrowedLine(mainImage, [self.colsUpsc[i], self.rowsUpsc[i]], [endX[i], endY[i]], [0,255,0])
+                    cv2.arrowedLine(mainImage, [self.colsUpsc[i], self.rowsUpsc[i]], [endX[i], endY[i]], [int(0),int(255),int(0)])
 
             
-            self.video.write((mainImage.astype(np.uint8)))
+            #self.video.write((mainImage.astype(np.uint8)))
             cv2.imshow(self.window_name, mainImage)
             if cv2.waitKey(1) & 0xFF == ord('q'):
                 break
-        self.video.release()
+        #self.video.release()
         cv2.destroyAllWindows()
 
 
