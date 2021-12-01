@@ -17,7 +17,7 @@ class FluidsRenderer:
 
         """
 
-        if colorMode != "speed" and colorMode != "LIC":
+        if colorMode != "speed" and colorMode != "LIC" and colorMode!= "pressure":
             print("Invalid color mode")
             raise ValueError
 
@@ -63,7 +63,7 @@ class FluidsRenderer:
 
             uUpscaled = cv2.resize(self.sim.u, self.imageSize)
             vUpscaled = cv2.resize(self.sim.v, self.imageSize)
-
+            pUpscaled = cv2.resize(self.sim.p, self.imageSize)
             if self.colorMode == "LIC":
                 velStack = self.LICBase.copy()
 
@@ -73,12 +73,10 @@ class FluidsRenderer:
                 lic_image = lic_flow(velStack, t=nt/10.0, len_pix=10, noise=self.LICNoise)*255
                 mainImage=cv2.cvtColor(lic_image.astype(np.uint8),cv2.COLOR_GRAY2BGR)
             if self.colorMode == "speed":
-
-
-                speedImage = cv2.resize(uUpscaled**2+vUpscaled**2, self.imageSize)*100
-
-                mainImage=cv2.cvtColor(speedImage.astype(np.uint8),cv2.COLOR_GRAY2BGR)
-
+                speedImage = cv2.resize(np.sqrt(uUpscaled**2+vUpscaled**2), self.imageSize)
+                mainImage=cv2.cvtColor(speedImage.astype(np.uint8),cv2.COLOR_GRAY2BGR)/np.max(speedImage)
+            if self.colorMode == "pressure":
+                mainImage=cv2.cvtColor(pUpscaled.astype(np.uint8),cv2.COLOR_GRAY2BGR)*255/1000
             
             if self.useArrows:
                 endX = (self.colsUpsc+(self.sim.u[self.rows, self.cols].flatten()*self.arrowSpacing*5)).astype(np.int32)
