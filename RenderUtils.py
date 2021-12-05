@@ -9,7 +9,7 @@ from sympy.physics.vector import ReferenceFrame
 
 class FluidsRenderer:
     def __init__(self, sim, upscaleMult = 5, arrowSpacing=5, 
-    forcedVel=[], windowName = "PyCFD", arrows=True, colorMode = "speed", callback=None
+    forcedVel=[], windowName = "PyCFD", arrows=True, colorMode = "speed", callback=None, arrowLength = 20
     ):
         """
         Easy rendering utility for fluid sim.
@@ -27,7 +27,7 @@ class FluidsRenderer:
         self.arrowSpacing = arrowSpacing
         self.useArrows = arrows
         self.colorMode = colorMode
-
+        self.arrowLength = arrowLength
         self.fourcc = cv2.VideoWriter_fourcc(*"mp4v")
         self.forcedVel = forcedVel
 
@@ -47,11 +47,11 @@ class FluidsRenderer:
         cv2.resizeWindow(self.window_name, self.imageSize[0],self.imageSize[1])
         self.baseImage = np.zeros(self.imageSize)
         self.LICNoise = np.random.rand(*(self.imageSize)).transpose()*cv2.resize(self.sim.velBoundary, self.imageSize)
-        self.LICBase = np.zeros([self.imageSize[0], self.imageSize[1],2])
+        self.LICBase = np.zeros([self.imageSize[1], self.imageSize[0],2])
         self.R = ReferenceFrame('R')
 
     def startContinousRender(self):
-        self.video = cv2.VideoWriter('Output.mp4', self.fourcc,30, [self.imageSize[0], self.imageSize[1]])
+        self.video = cv2.VideoWriter('Output.mp4', self.fourcc,60, [self.imageSize[0], self.imageSize[1]])
         nt=0
         while True:
             nt+=1
@@ -68,6 +68,10 @@ class FluidsRenderer:
             uUpscaled = cv2.resize(self.sim.u, self.imageSize)
             vUpscaled = cv2.resize(self.sim.v, self.imageSize)
             pUpscaled = cv2.resize(self.sim.p, self.imageSize)
+            if self.colorMode=="speed" or self.useArrows == True:
+                speeds = np.sqrt(self.sim.u**2+self.sim.v**2)
+                speedMax = np.max(speeds)
+
             if self.colorMode == "LIC":
                 velStack = self.LICBase.copy()
 
@@ -77,11 +81,11 @@ class FluidsRenderer:
                 lic_image = lic_flow(velStack, t=nt/10.0, len_pix=10, noise=self.LICNoise)*255
                 mainImage=cv2.cvtColor(lic_image.astype(np.uint8),cv2.COLOR_GRAY2BGR)
             if self.colorMode == "speed":
-                speeds = np.sqrt(uUpscaled**2+vUpscaled**2)
 
-                speedImage = cv2.resize(speeds*255/np.max(speeds), self.imageSize)
-                mainImage=cv2.cvtColor(speedImage.astype(np.uint8),cv2.COLOR_GRAY2BGR)
-                mainImage=cv2.applyColorMap(mainImage, cv2.COLORMAP_JET)
+                mainImage = cv2.cvtColor((speeds*255/speedMax).astype(np.uint8),cv2.COLOR_GRAY2BGR)
+                mainImage = cv2.applyColorMap(mainImage, cv2.COLORMAP_JET)
+                mainImage = cv2.resize(mainImage, self.imageSize)
+
             if self.colorMode == "pressure":
                 mainImage=cv2.cvtColor(pUpscaled.astype(np.uint8),cv2.COLOR_GRAY2BGR)*255/1000
 
@@ -91,8 +95,9 @@ class FluidsRenderer:
                 mainImage=cv2.applyColorMap(mainImage, cv2.COLORMAP_JET)
             
             if self.useArrows:
-                endX = (self.colsUpsc+(self.sim.u[self.rows, self.cols].flatten()*self.arrowSpacing*5)).astype(np.int32)
-                endY = (self.rowsUpsc+(self.sim.v[self.rows, self.cols].flatten()*self.arrowSpacing*5)).astype(np.int32)
+
+                endX = (self.colsUpsc+(self.sim.u[self.rows, self.cols].flatten()*self.arrowSpacing*self.sim.dt/self.sim.dx)/speedMax*self.arrowLength).astype(np.int32)
+                endY = (self.rowsUpsc+(self.sim.v[self.rows, self.cols].flatten()*self.arrowSpacing*self.sim.dt/self.sim.dx)/speedMax*self.arrowLength).astype(np.int32)
                 for i in range(len(self.rows)):
                     cv2.arrowedLine(mainImage, [self.colsUpsc[i], self.rowsUpsc[i]], [endX[i], endY[i]], [int(0),int(0),int(0)])
 
