@@ -10,18 +10,18 @@ class FluidSim:
 
         #Boundary conditions
         if boundaryDP is None:
-            self.dp = np.ones([nx,ny])
+            self.dp = np.ones([ny,nx])
         else:
             self.dp = (~boundaryDP).astype(int)
+
         if boundary0Vel is None: 
-            self.velBoundary = np.ones([nx, ny])
+            self.velBoundary = np.ones([ny, nx])
         else: 
             self.velBoundary = (~boundary0Vel).astype(int)
 
         if walls is not None:
             self.velBoundary *= (~walls).astype(int)
             self.dp *= (~walls).astype(int)
-
 
         #Simulation variables 
         self.nx = nx
@@ -140,7 +140,6 @@ class FluidSim:
 
         advected[yIndices,xIndices] = c[offsets[1,xIndices,yIndices], offsets[0,xIndices,yIndices]]
         return advected
-    
     @njit(parallel=True)
     def velocity_calcs(u, v, p, dt, dx, dy, nu, rho, dp):
         """
@@ -148,7 +147,7 @@ class FluidSim:
         """
         un = u.copy()
         vn = v.copy()
-        
+
         u[1:-1, 1:-1] = (un[1:-1, 1:-1]-
                 un[1:-1, 1:-1] * dt / dx *
                 (un[1:-1, 1:-1] - un[1:-1, 0:-2]) -
