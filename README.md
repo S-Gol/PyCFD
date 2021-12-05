@@ -2,6 +2,8 @@
  
 PyCFD is a 2-D Navier Stokes Finite Element solver. It works on a square grid and uses Numba's JIT compiler to speed up computations. 
 
+![Vortex flow](https://github.com/S-Gol/PyCFD/blob/main/Examples/VortexExample.gif)
+
 # Features
 
 1. Fully dynamic flow
